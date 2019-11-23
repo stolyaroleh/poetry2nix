@@ -10,14 +10,15 @@
 , precompileBytecode ? true
 }:
 let
+  version = "1.0.0b7";
   release-tarball = builtins.fetchTarball {
-    url = "https://github.com/sdispater/poetry/releases/download/1.0.0b6/poetry-1.0.0b6-linux.tar.gz";
-    sha256 = "0sliplbgvinb3qdnjd9gsarj3mk8z7dmsv85x53c53hhhmvwh06y";
+    url = "https://github.com/sdispater/poetry/releases/download/${version}/poetry-${version}-linux.tar.gz";
+    sha256 = "1jg0sklrga6lalg5n2ji5wv4yzf0wfn4h6rr23d85f7sj6wjb2p2";
   };
 in
 stdenv.mkDerivation {
   pname = "poetry";
-  version = "1.0.0b6";
+  inherit version;
 
   phases = [
     "installPhase"
