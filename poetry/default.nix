@@ -5,6 +5,8 @@
 , autoPatchelfHook
 , gcc9
 
+, installShellFiles
+
 , precompileBytecode ? true
 }:
 let
@@ -27,12 +29,19 @@ stdenv.mkDerivation {
 
     autoPatchelfHook
     gcc9.cc.lib
+
+    installShellFiles
   ];
 
   installPhase = ''
     mkdir -p $out/bin $out/lib
     cp -r ${release-tarball} $out/lib/poetry
     cp ${./poetry} $out/bin/poetry
+
+    $out/bin/poetry completions bash > poetry.bash
+    $out/bin/poetry completions fish > poetry.fish
+    $out/bin/poetry completions zsh > poetry.zsh
+    installShellCompletion poetry.{bash,fish,zsh}
   ''
   + lib.optionalString precompileBytecode ''
     chmod -R +w $out
