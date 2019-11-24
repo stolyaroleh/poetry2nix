@@ -38,6 +38,7 @@ stdenv.mkDerivation {
     mkdir -p $out/bin $out/lib
     cp -r ${release-tarball} $out/lib/poetry
     cp ${./poetry} $out/bin/poetry
+    patchShebangs $out/bin/poetry
 
     $out/bin/poetry completions bash > poetry.bash
     $out/bin/poetry completions fish > poetry.fish
