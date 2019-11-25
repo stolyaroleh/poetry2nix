@@ -15,13 +15,14 @@ rec {
     inherit poetry;
   };
   makePoetryPackage =
-    { src
-    , pyprojectFile
-    , poetrylockFile
+    { path
+    , files
     , additionalFixups ? null
     , ...
     }@args:
       let
+        pyprojectFile = path + "/pyproject.toml";
+        poetrylockFile = path + "/poetry.lock";
         lockfile = importTOML poetrylockFile;
         pyproject = importTOML pyprojectFile;
         name = pyproject.tool.poetry.name;
@@ -31,7 +32,9 @@ rec {
           inherit (python.pkgs) buildPythonPackage buildPythonApplication;
         };
         # Make an overlay containing packages from the lockfile
-        lockfileOverlay = makeLockfileOverlay lockfile;
+        lockfileOverlay = makeLockfileOverlay {
+          inherit lockfile path;
+        };
 
         # Fixup them (add binary dependencies, patch broken)
         fixupsOverlay = pkgs.callPackage ./fixups.nix {
@@ -40,10 +43,10 @@ rec {
 
         # Make an overlay containing the package we are building
         packageOverlay = makePackageOverlay (
-          builtins.removeAttrs
-            args
-            [ "pyprojectFile" "poetrylockFile" "additionalFixups" ]
-          // { inherit pyproject; }
+          builtins.removeAttrs args [ "additionalFixups" ] // {
+            inherit pyproject;
+            transitiveDependency = false;
+          }
         );
 
         # Collect all overlays in a list

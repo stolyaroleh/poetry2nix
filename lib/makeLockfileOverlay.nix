@@ -2,7 +2,9 @@
 , lib
 }:
 # Given a parsed poetry.lock, return an overlay that contains its packages.
-lockfile:
+{ lockfile
+, path
+}:
 self: super:
 let
   /*
@@ -128,16 +130,36 @@ let
           let
             deps = builtins.attrNames (pkgMeta.dependencies or {});
           in
-            builtins.map (dep: self.${dep}) deps;
+            builtins.map (dep: self.${lib.toLower dep}) deps;
 
         meta.description = pkgMeta.description;
       };
+
+  makeSourcePackage =
+    pkgMeta:
+      let
+        overlay = import (path + "/${pkgMeta.source.url}" + "/default.nix");
+      in
+        (overlay self super).${lib.toLower pkgMeta.name};
+
+  packageType = pkgMeta: pkgMeta.source.type or "pypi";
+  packagesByType = lib.groupBy packageType packages;
 in
 builtins.listToAttrs (
-  builtins.map (
-    pkgMeta: rec {
-      name = pkgMeta.name;
-      value = makePackage pkgMeta;
-    }
-  ) packages
+  (
+    builtins.map (
+      pkgMeta: rec {
+        name = lib.toLower pkgMeta.name;
+        value = makePackage pkgMeta;
+      }
+    ) packagesByType.pypi or []
+  )
+  ++ (
+    builtins.map (
+      pkgMeta: rec {
+        name = lib.toLower pkgMeta.name;
+        value = makeSourcePackage pkgMeta;
+      }
+    ) packagesByType.directory or []
+  )
 )
