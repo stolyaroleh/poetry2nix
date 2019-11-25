@@ -3,13 +3,13 @@
 }:
 let
   inherit (pkgs) lib;
-  importTOML = path: builtins.fromTOML (builtins.readFile path);
 in
 rec {
   # Pin poetry until Nixpkgs has a better version
   poetry = pkgs.callPackage ./poetry {
     inherit python;
   };
+  importTOML = path: builtins.fromTOML (builtins.readFile path);
   makeLockfileOverlay = pkgs.callPackage ./lib/makeLockfileOverlay.nix {};
   makePackageOverlay = pkgs.callPackage ./lib/makePackageOverlay.nix {
     inherit poetry;
