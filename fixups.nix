@@ -3,7 +3,12 @@ self: super:
 let
   addBuildInputs = deps: drv: drv.overrideAttrs (
     old: {
-      buildInputs = old.buildInputs ++ deps;
+      buildInputs = (old.buildInputs or []) ++ deps;
+    }
+  );
+  addNativeBuildInputs = deps: drv: drv.overrideAttrs (
+    old: {
+      nativeBuildInputs = (old.nativeBuildInputs or []) ++ deps;
     }
   );
   addSetupTools = addBuildInputs [
