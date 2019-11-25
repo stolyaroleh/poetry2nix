@@ -16,8 +16,8 @@ rec {
   };
   makePoetryPackage =
     { src
-    , pyprojectFile ? src + "/pyproject.toml"
-    , poetrylockFile ? src + "/poetry.lock"
+    , pyprojectFile
+    , poetrylockFile
     , additionalFixups ? null
     , ...
     }@args:
