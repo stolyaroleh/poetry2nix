@@ -16,6 +16,8 @@ let
   ];
 in
 {
+  inherit addBuildInputs addNativeBuildInputs addSetupTools;
+
   astroid = addBuildInputs [ self.pytest-runner ] super.astroid;
   importlib-metadata = addSetupTools super.importlib-metadata;
   lazy-object-proxy = addSetupTools super.lazy-object-proxy;
