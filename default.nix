@@ -31,15 +31,20 @@ rec {
           inherit python;
           inherit (python.pkgs) buildPythonPackage buildPythonApplication;
         };
+
+        # Make an overlay with missing packages that other packages forgot to declare
+        missingOverlay = makeLockfileOverlay {
+          lockfile = importTOML ./missing/poetry.lock;
+          path = ./missing;
+        };
+
         # Make an overlay containing packages from the lockfile
         lockfileOverlay = makeLockfileOverlay {
           inherit lockfile path;
         };
 
         # Fixup them (add binary dependencies, patch broken)
-        fixupsOverlay = pkgs.callPackage ./fixups.nix {
-          inherit python;
-        };
+        fixupsOverlay = pkgs.callPackage ./fixups.nix {};
 
         # Make an overlay containing the package we are building
         packageOverlay = makePackageOverlay (
@@ -51,6 +56,7 @@ rec {
 
         # Collect all overlays in a list
         overlays = [
+          missingOverlay
           lockfileOverlay
           fixupsOverlay
         ]
@@ -65,5 +71,5 @@ rec {
           lib.foldl' (lib.flip lib.extends) base overlays
         );
       in
-        composed.${name};
+        composed.${name} // { overlay = composed; };
 }
