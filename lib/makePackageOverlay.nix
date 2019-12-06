@@ -39,7 +39,7 @@ let
 in
 self: super:
   {
-    "${lib.toLower name}" = super.buildPythonPackage (
+    "${lib.toLower name}" = super.buildPythonApplication (
       {
         pname = name;
         inherit version;
@@ -48,9 +48,14 @@ self: super:
 
         nativeBuildInputs = (args.nativeBuildInputs or []) ++ [ poetry ];
         propagatedBuildInputs = (args.propagatedBuildInputs or []) ++ (
-          builtins.map
-            (dep: self.${lib.toLower dep})
-            (builtins.attrNames dependencies)
+          # TODO: properly filter optional dependencies
+          builtins.filter
+            (x: x != null)
+            (
+              builtins.map
+                (dep: self.${lib.toLower dep} or null)
+                (builtins.attrNames dependencies)
+            )
         );
         checkInputs = (args.checkInputs or []) ++ (
           builtins.map
