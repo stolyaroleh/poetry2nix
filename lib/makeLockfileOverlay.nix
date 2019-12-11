@@ -1,5 +1,7 @@
 { fetchurl
 , lib
+, importTOML
+, makePackageOverlay
 }:
 # Given a parsed poetry.lock, return an overlay that contains its packages.
 { lockfile
@@ -138,7 +140,13 @@ let
   makeSourcePackage =
     pkgMeta:
       let
-        overlay = import (path + "/${pkgMeta.source.url}" + "/default.nix");
+        pkgPath = path + "/${pkgMeta.source.url}";
+        pyproject = importTOML (pkgPath + "/pyproject.toml");
+        overlay = makePackageOverlay {
+          inherit pyproject;
+          path = pkgPath;
+          files = [ ".*" ];
+        };
       in
         (overlay self super).${lib.toLower pkgMeta.name};
 

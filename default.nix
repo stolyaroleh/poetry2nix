@@ -10,7 +10,9 @@ rec {
     inherit python;
   };
   importTOML = path: builtins.fromTOML (builtins.readFile path);
-  makeLockfileOverlay = pkgs.callPackage ./lib/makeLockfileOverlay.nix {};
+  makeLockfileOverlay = pkgs.callPackage ./lib/makeLockfileOverlay.nix {
+    inherit importTOML makePackageOverlay;
+  };
   makePackageOverlay = pkgs.callPackage ./lib/makePackageOverlay.nix {
     inherit poetry;
   };
