@@ -48,14 +48,24 @@ self: super:
 
         nativeBuildInputs = (args.nativeBuildInputs or []) ++ [ poetry ];
         propagatedBuildInputs = (args.propagatedBuildInputs or []) ++ (
-          # TODO: properly filter optional dependencies
-          builtins.filter
-            (x: x != null)
-            (
-              builtins.map
-                (dep: self.${lib.toLower dep} or null)
-                (builtins.attrNames dependencies)
-            )
+          let
+            # Required dependencies in pyproject.toml look like this: psycopg2 = "*"
+            # Optional: psycopg2 = {version = "*", optional = true}
+            isOptional = meta: builtins.isAttrs meta && meta.optional or false;
+
+            tryGetDep = name: meta:
+              self.${lib.toLower name} or (
+                # Skip dependencies only if they are optional
+                assert
+                lib.assertMsg
+                  (isOptional meta)
+                  "${name} missing and is not marked as optional. Is your lockfile up to date?";
+                null
+              );
+
+            skipNull = builtins.filter (x: x != null);
+          in
+            skipNull (lib.mapAttrsToList tryGetDep dependencies)
         );
         checkInputs = (args.checkInputs or []) ++ (
           builtins.map
