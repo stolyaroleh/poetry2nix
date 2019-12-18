@@ -3,6 +3,8 @@
 }:
 let
   inherit (pkgs) lib;
+  sources = import ./nix/sources.nix;
+  upstream = sources.poetry2nix;
 in
 rec {
   # Pin poetry until Nixpkgs has a better version
