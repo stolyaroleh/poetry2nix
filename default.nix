@@ -9,11 +9,12 @@ in
 rec {
   # Pin poetry until Nixpkgs has a better version
   poetry = pkgs.callPackage ./poetry {
-    inherit python;
+    inherit makePoetryPackage python;
   };
+  evalPEP508Markers = (pkgs.callPackage "${upstream}/pep508.nix" {}) python;
   importTOML = path: builtins.fromTOML (builtins.readFile path);
   makeLockfileOverlay = pkgs.callPackage ./lib/makeLockfileOverlay.nix {
-    inherit importTOML makePackageOverlay;
+    inherit evalPEP508Markers importTOML makePackageOverlay;
   };
   makePackageOverlay = pkgs.callPackage ./lib/makePackageOverlay.nix {
     inherit poetry;
@@ -21,12 +22,12 @@ rec {
   makePoetryPackage =
     { path
     , files
+    , pyprojectFile ? path + "/pyproject.toml"
+    , poetrylockFile ? path + "/poetry.lock"
     , additionalFixups ? null
     , ...
     }@args:
       let
-        pyprojectFile = path + "/pyproject.toml";
-        poetrylockFile = path + "/poetry.lock";
         lockfile = importTOML poetrylockFile;
         pyproject = importTOML pyprojectFile;
         name = pyproject.tool.poetry.name;

@@ -2,8 +2,10 @@
 , lib
 , importTOML
 , makePackageOverlay
+, evalPEP508Markers
 }:
 # Given a parsed poetry.lock, return an overlay that contains its packages.
+# Packages that are incompatible with our Python will be null
 { lockfile
 , path
 }:
@@ -41,17 +43,26 @@ let
   */
   hashes = lockfile.metadata.files;
 
+  matchesVersion = version: file:
+    builtins.match ("^.*" + builtins.replaceStrings [ "." ] [ "\\." ] version + ".*$") file != null;
+
   # The following functions try to find an entry in `hashes` for a given `pkgName`.
-  getUniversalWheel = pkgName:
+  getUniversalWheel = pkgMeta:
     lib.lists.findFirst
-      (pkgSrc: lib.strings.hasSuffix "py2.py3-none-any.whl" pkgSrc.file)
+      (
+        pkgSrc:
+          (matchesVersion pkgMeta.version pkgSrc.file) && (lib.strings.hasSuffix "py2.py3-none-any.whl" pkgSrc.file)
+      )
       null
-      hashes.${pkgName};
-  getSourceTarball = pkgName:
+      hashes.${pkgMeta.name};
+  getSourceTarball = pkgMeta:
     lib.lists.findFirst
-      (pkgSrc: lib.strings.hasSuffix ".tar.gz" pkgSrc.file)
+      (
+        pkgSrc:
+          (matchesVersion pkgMeta.version pkgSrc.file) && (lib.strings.hasSuffix ".tar.gz" pkgSrc.file)
+      )
       null
-      hashes.${pkgName};
+      hashes.${pkgMeta.name};
 
   # The following functions take an entry returned above and try to fetch the source
   # by guessing the package URL. The derivation they return contains a `format`
@@ -99,24 +110,24 @@ let
   choose = a: b: if a == null then b else a;
   anyOf = lib.foldr choose null;
 
-  getSourceOrDie = pkgName:
+  getSourceOrDie = pkgMeta:
     let
       src = anyOf [
-        (lib.mapNullable (fetchSourceTarball pkgName) (getSourceTarball pkgName))
-        (lib.mapNullable (fetchUniversalWheel pkgName) (getUniversalWheel pkgName))
+        (lib.mapNullable (fetchSourceTarball pkgMeta.name) (getSourceTarball pkgMeta))
+        (lib.mapNullable (fetchUniversalWheel pkgMeta.name) (getUniversalWheel pkgMeta))
       ];
     in
       assert
       lib.assertMsg
         (src != null)
-        "Unsupported sources for ${pkgName}: ${
-        lib.concatMapStringsSep ", " (pkgHash: pkgHash.file) hashes.${pkgName}
+        "Unsupported sources for ${pkgMeta.name}: ${
+        lib.concatMapStringsSep ", " (pkgHash: pkgHash.file) hashes.${pkgMeta.name}
         }";
       src;
 
   makePackage = pkgMeta:
     let
-      src = getSourceOrDie pkgMeta.name;
+      src = getSourceOrDie pkgMeta;
     in
       super.buildPythonPackage {
         pname = pkgMeta.name;
@@ -150,24 +161,48 @@ let
       in
         (overlay self super).${lib.toLower pkgMeta.name};
 
-  packageType = pkgMeta: pkgMeta.source.type or "pypi";
+  isNeeded = pkgMeta:
+    if builtins.hasAttr "marker" pkgMeta
+    then evalPEP508Markers pkgMeta.marker
+    else true;
+  packageType = pkgMeta:
+    if !(isNeeded pkgMeta)
+    then "notneeded"
+    else pkgMeta.source.type or "pypi";
   packagesByType = lib.groupBy packageType packages;
+
+  lockfilePkgs =
+    # Lockfile can contain multiple versions of a package,
+    # with markers that enable them based on Python we are using.
+    # Since builtins.listToAttrs picks the first value for an attribute:
+    # builtins.listToAttrs [{name="x"; value=null;} {name="x"; value=3;}] is {x=null;},
+    # we make sure that enabled version supersedes the disabled one by doing a set union instead.
+    builtins.listToAttrs (
+      (
+        builtins.map (
+          pkgMeta: {
+            name = lib.toLower pkgMeta.name;
+            value = null;
+          }
+        ) packagesByType.notneeded or []
+      )
+    ) // builtins.listToAttrs (
+      (
+        builtins.map (
+          pkgMeta: rec {
+            name = lib.toLower pkgMeta.name;
+            value = makePackage pkgMeta;
+          }
+        ) packagesByType.pypi or []
+      )
+      ++ (
+        builtins.map (
+          pkgMeta: rec {
+            name = lib.toLower pkgMeta.name;
+            value = makeSourcePackage pkgMeta;
+          }
+        ) packagesByType.directory or []
+      )
+    );
 in
-builtins.listToAttrs (
-  (
-    builtins.map (
-      pkgMeta: rec {
-        name = lib.toLower pkgMeta.name;
-        value = makePackage pkgMeta;
-      }
-    ) packagesByType.pypi or []
-  )
-  ++ (
-    builtins.map (
-      pkgMeta: rec {
-        name = lib.toLower pkgMeta.name;
-        value = makeSourcePackage pkgMeta;
-      }
-    ) packagesByType.directory or []
-  )
-)
+lockfilePkgs // { inherit lockfilePkgs; }

@@ -1,64 +1,70 @@
-{ stdenv
+{ makePoetryPackage
 , lib
+, fetchFromGitHub
 , python
-
-, autoPatchelfHook
-, gcc9
-
-, installShellFiles
-
-, precompileBytecode ? true
+, runtimeShell
 }:
 let
-  version = "1.0.0b9";
-  release-tarball = builtins.fetchTarball {
-    url = "https://github.com/sdispater/poetry/releases/download/${version}/poetry-${version}-linux.tar.gz";
-    sha256 = "0m9q39zimwsxij3ixrgjmdp2wr5z96jrmzx7f7pzsbz2ndhzh0ls";
+  version = "1.0.0";
+  src = fetchFromGitHub {
+    owner = "python-poetry";
+    repo = "poetry";
+    rev = version;
+    sha256 = "05xlx9wnlrsjj3i4wawnvxadvqwsdh03401wpgingkbq0c50aimi";
   };
 in
-stdenv.mkDerivation {
-  pname = "poetry";
-  inherit version;
+makePoetryPackage {
+  path = src;
+  files = [];
+  inherit src;
 
-  phases = [
-    "installPhase"
-    "fixupPhase"
-  ];
-
-  buildInputs = [
-    python
-
-    autoPatchelfHook
-    gcc9.cc.lib
-
-    installShellFiles
-  ];
-
-  installPhase = ''
-    mkdir -p $out/bin $out/lib
-    cp -r ${release-tarball} $out/lib/poetry
-    cp ${./poetry} $out/bin/poetry
-    patchShebangs $out/bin/poetry
-
-    $out/bin/poetry completions bash > poetry.bash
-    $out/bin/poetry completions fish > poetry.fish
-    $out/bin/poetry completions zsh > poetry.zsh
-    installShellCompletion poetry.{bash,fish,zsh}
-  ''
-  + lib.optionalString precompileBytecode ''
-    chmod -R +w $out
-    (
-      cd $out/bin
-      python -m compileall .
-    )
-    (
-      cd $out/lib/poetry
-      ls | grep -v _vendor | xargs -n1 python -m compileall
-    )
-    (
-      cd $out/lib/poetry/_vendor
-      version=$(python -c 'import sys; print("py{}.{}".format(sys.version_info.major, sys.version_info.minor))')
-      python -m compileall "$version"
-    )
+  # "Vendor" dependencies (for build-system support)
+  postPatch = ''
+    for path in ''${PYTHONPATH//:/ }; do
+      echo "sys.path.insert(0, \"$path\")" >> poetry/__init__.py
+    done
   '';
+
+  # Poetry is a bit special in that it can't use itself as the `build-system` property in pyproject.toml.
+  # That's why we need to hackily install outputs completely manually.
+  #
+  # For projects using poetry normally overriding the installPhase is not required.
+  installPhase = ''
+    runHook preInstall
+
+    mkdir -p $out/lib/${python.libPrefix}/site-packages
+    cp -r poetry $out/lib/${python.libPrefix}/site-packages
+
+    mkdir -p $out/bin
+    cat > $out/bin/poetry <<EOF
+    #!${runtimeShell}
+    export PYTHONPATH=$out/lib/${python.libPrefix}/site-packages:$PYTHONPATH
+    exec ${python}/bin/python -m poetry "\$@"
+    EOF
+    chmod +x $out/bin/poetry
+
+    python -m compileall $out/bin $out/lib
+
+    mkdir -p "$out/share/bash-completion/completions"
+    "$out/bin/poetry" completions bash > "$out/share/bash-completion/completions/poetry"
+    mkdir -p "$out/share/zsh/vendor-completions"
+    "$out/bin/poetry" completions zsh > "$out/share/zsh/vendor-completions/_poetry"
+    mkdir -p "$out/share/fish/vendor_completions.d"
+    "$out/bin/poetry" completions fish > "$out/share/fish/vendor_completions.d/poetry.fish"
+
+    runHook postInstall
+  '';
+
+  # Propagating dependencies leads to issues downstream
+  # We've already patched poetry to prefer "vendored" dependencies
+  postFixup = ''
+    rm $out/nix-support/propagated-build-inputs
+  '';
+
+  # Fails because of impurities (network, git etc etc)
+  doCheck = false;
+
+  meta = with lib; {
+    maintainers = with maintainers; [ adisbladis ];
+  };
 }

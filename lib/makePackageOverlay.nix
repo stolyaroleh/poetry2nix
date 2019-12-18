@@ -37,64 +37,66 @@ let
         };
       };
 in
-self: super:
+self: super: let
+  buildSystemInputs = {
+    "intreehooks:loader" = [ super.intreehooks ];
+    "poetry.masonry.api" = [ poetry ];
+  }.${patchedPyproject.build-system.build-backend or (throw "Missing build system")} or (throw "Unsupported build system");
+  package = super.buildPythonApplication (
+    {
+      pname = name;
+      inherit version;
+      format = "pyproject";
+      src = lib.sourceByRegex path files;
+
+      nativeBuildInputs = (args.buildInputs or []) ++ buildSystemInputs;
+      propagatedBuildInputs = (args.propagatedBuildInputs or []) ++ (
+        let
+          # Required dependencies in pyproject.toml look like this: psycopg2 = "*"
+          # Optional: psycopg2 = {version = "*", optional = true}
+          isOptional = meta: builtins.isAttrs meta && meta.optional or false;
+
+          tryGetDep = name: meta:
+            self.${lib.toLower name} or (
+              # Skip dependencies only if they are optional
+              assert
+              lib.assertMsg
+                (isOptional meta)
+                "${name} missing and is not marked as optional. Is your lockfile up to date?";
+              null
+            );
+
+          skipNull = builtins.filter (x: x != null);
+        in
+          skipNull (lib.mapAttrsToList tryGetDep dependencies)
+      );
+      checkInputs = (args.checkInputs or []) ++ (
+        builtins.map
+          (dep: self.${lib.toLower dep})
+          (builtins.attrNames dev-dependencies)
+      );
+
+      postPatch = ''
+        echo '${builtins.toJSON patchedPyproject}' | ${yj}/bin/yj -jt > pyproject.toml
+      '';
+
+      # prevent pipShellHook from running
+      shellHook = args.shellHook or ":";
+
+      meta.description = description;
+    }
+    // (
+      builtins.removeAttrs args [
+        "path"
+        "files"
+        "pyproject"
+        "nativeBuildInputs"
+        "propagatedBuildInputs"
+        "checkInputs"
+      ]
+    )
+  );
+in
   {
-    "${lib.toLower name}" = super.buildPythonApplication (
-      {
-        pname = name;
-        inherit version;
-        format = "pyproject";
-        src = lib.sourceByRegex path files;
-
-        nativeBuildInputs = (args.nativeBuildInputs or []) ++ [ poetry ];
-        propagatedBuildInputs = (args.propagatedBuildInputs or []) ++ (
-          let
-            # Required dependencies in pyproject.toml look like this: psycopg2 = "*"
-            # Optional: psycopg2 = {version = "*", optional = true}
-            isOptional = meta: builtins.isAttrs meta && meta.optional or false;
-
-            tryGetDep = name: meta:
-              self.${lib.toLower name} or (
-                # Skip dependencies only if they are optional
-                assert
-                lib.assertMsg
-                  (isOptional meta)
-                  "${name} missing and is not marked as optional. Is your lockfile up to date?";
-                null
-              );
-
-            skipNull = builtins.filter (x: x != null);
-          in
-            skipNull (lib.mapAttrsToList tryGetDep dependencies)
-        );
-        checkInputs = (args.checkInputs or []) ++ (
-          builtins.map
-            (dep: self.${lib.toLower dep})
-            (builtins.attrNames dev-dependencies)
-        );
-
-        buildPhase = ''
-          runHook preBuild
-          echo '${builtins.toJSON patchedPyproject}' | ${yj}/bin/yj -jt > pyproject.toml
-          export HOME=$(pwd)
-          poetry build -f wheel -vv
-          runHook postBuild
-        '';
-
-        # prevent pipShellHook from running
-        shellHook = args.shellHook or ":";
-
-        meta.description = description;
-      }
-      // (
-        builtins.removeAttrs args [
-          "path"
-          "files"
-          "pyproject"
-          "nativeBuildInputs"
-          "propagatedBuildInputs"
-          "checkInputs"
-        ]
-      )
-    );
+    "${lib.toLower name}" = package;
   }
