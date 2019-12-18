@@ -2,15 +2,11 @@
 , lib
 , importTOML
 , makePackageOverlay
-, evalPEP508Markers
+, isPEP508Excluded
 }:
 # Given a parsed poetry.lock, return an overlay that contains its packages.
 # Packages that are incompatible with our Python will be null
-{ lockfile
-, path
-}:
-self: super:
-let
+{
   /*
   [
     {
@@ -29,8 +25,8 @@ let
     }
   ]
   */
-  packages = lockfile.package;
-
+  packages
+, lockfilePackages
   /*
   {
     "pytest-pylint" = [
@@ -41,8 +37,11 @@ let
     ]
   }
   */
-  hashes = lockfile.metadata.files;
-
+, hashes
+, path
+}:
+self: super:
+let
   matchesVersion = version: file:
     builtins.match ("^.*" + builtins.replaceStrings [ "." ] [ "\\." ] version + ".*$") file != null;
 
@@ -143,7 +142,13 @@ let
           let
             deps = builtins.attrNames (pkgMeta.dependencies or {});
           in
-            builtins.map (dep: self.${lib.toLower dep}) deps;
+            builtins.map (
+              dep:
+                let
+                  lowerName = lib.toLower dep;
+                in
+                  if builtins.elem lowerName lockfilePackages then self.${lib.toLower dep} else null
+            ) deps;
 
         meta.description = pkgMeta.description;
       };
@@ -154,39 +159,21 @@ let
         pkgPath = path + "/${pkgMeta.source.url}";
         pyproject = importTOML (pkgPath + "/pyproject.toml");
         overlay = makePackageOverlay {
-          inherit pyproject;
+          inherit lockfilePackages pyproject;
           path = pkgPath;
-          files = [ ".*" ];
+          src = pkgPath;
         };
       in
         (overlay self super).${lib.toLower pkgMeta.name};
 
-  isNeeded = pkgMeta:
-    if builtins.hasAttr "marker" pkgMeta
-    then evalPEP508Markers pkgMeta.marker
-    else true;
   packageType = pkgMeta:
-    if !(isNeeded pkgMeta)
-    then "notneeded"
+    if isPEP508Excluded pkgMeta
+    then "pep508_excluded"
     else pkgMeta.source.type or "pypi";
   packagesByType = lib.groupBy packageType packages;
 
   lockfilePkgs =
-    # Lockfile can contain multiple versions of a package,
-    # with markers that enable them based on Python we are using.
-    # Since builtins.listToAttrs picks the first value for an attribute:
-    # builtins.listToAttrs [{name="x"; value=null;} {name="x"; value=3;}] is {x=null;},
-    # we make sure that enabled version supersedes the disabled one by doing a set union instead.
     builtins.listToAttrs (
-      (
-        builtins.map (
-          pkgMeta: {
-            name = lib.toLower pkgMeta.name;
-            value = null;
-          }
-        ) packagesByType.notneeded or []
-      )
-    ) // builtins.listToAttrs (
       (
         builtins.map (
           pkgMeta: rec {

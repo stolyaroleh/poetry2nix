@@ -29,6 +29,7 @@ in
   cffi = addBuildInputs [ pkgs.libffi ] super.cffi;
   cryptography = addBuildInputs [ pkgs.openssl ] super.cryptography;
   flake8-print = addBuildInputs [ self.pytest-runner ] super.flake8-print;
+  intreehooks = addPropagatedBuildInputs [ super.pytoml ] super.intreehooks;
   importlib-metadata = addSetupTools super.importlib-metadata;
   jsonschema = addSetupTools super.jsonschema;
   keyring = addSetupTools super.keyring;

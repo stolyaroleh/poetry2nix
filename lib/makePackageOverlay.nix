@@ -3,7 +3,8 @@
 # a single package, defined there.
 { pyproject
 , path
-, files
+, src
+, lockfilePackages
 , transitiveDependency ? true
 , ...
 }@args:
@@ -45,26 +46,24 @@ self: super: let
   package = super.buildPythonApplication (
     {
       pname = name;
-      inherit version;
+      inherit version src;
       format = "pyproject";
-      src = lib.sourceByRegex path files;
 
       nativeBuildInputs = (args.buildInputs or []) ++ buildSystemInputs;
       propagatedBuildInputs = (args.propagatedBuildInputs or []) ++ (
         let
           # Required dependencies in pyproject.toml look like this: psycopg2 = "*"
           # Optional: psycopg2 = {version = "*", optional = true}
-          isOptional = meta: builtins.isAttrs meta && meta.optional or false;
+          isOptional = meta:
+            builtins.isAttrs meta && meta.optional or false;
 
           tryGetDep = name: meta:
-            self.${lib.toLower name} or (
-              # Skip dependencies only if they are optional
-              assert
-              lib.assertMsg
-                (isOptional meta)
-                "${name} missing and is not marked as optional. Is your lockfile up to date?";
-              null
-            );
+            let
+              lowerName = lib.toLower name;
+            in
+              if !(builtins.elem lowerName lockfilePackages)
+              then null
+              else self.${lowerName};
 
           skipNull = builtins.filter (x: x != null);
         in
@@ -77,7 +76,9 @@ self: super: let
       );
 
       postPatch = ''
-        echo '${builtins.toJSON patchedPyproject}' | ${yj}/bin/yj -jt > pyproject.toml
+        cat << 'EOF' | ${yj}/bin/yj -jt > pyproject.toml
+        ${builtins.toJSON patchedPyproject}
+        EOF
       '';
 
       # prevent pipShellHook from running
@@ -88,7 +89,6 @@ self: super: let
     // (
       builtins.removeAttrs args [
         "path"
-        "files"
         "pyproject"
         "nativeBuildInputs"
         "propagatedBuildInputs"

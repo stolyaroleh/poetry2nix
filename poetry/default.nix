@@ -15,8 +15,6 @@ let
 in
 makePoetryPackage {
   path = src;
-  files = [];
-  inherit src;
 
   # "Vendor" dependencies (for build-system support)
   postPatch = ''
