@@ -8,5 +8,4 @@ authors = []
 python = "^3.7"
 intreehooks = "*"
 pytest-runner = "*"
-
-[tool.poetry.dev-dependencies]
+setuptools_scm = {version = "*", extras = ["toml"]}

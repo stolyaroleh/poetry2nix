@@ -16,9 +16,7 @@ let
       propagatedBuildInputs = (old.propagatedBuildInputs or []) ++ deps;
     }
   );
-  addSetupTools = addBuildInputs [
-    (self.setuptools_scm or super.python.pkgs.setuptools_scm)
-  ];
+  addSetupTools = addBuildInputs [ self.setuptools-scm ];
   withoutFixups = pkgName: super.lockfilePkgs.${pkgName};
 in
 {
